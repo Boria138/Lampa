@@ -307,7 +307,7 @@ function showAboutDialog() {
         type: 'info',
         title: 'О программе',
         message: 'Lampa Linux Client',
-        detail: `Версия: 1.0.0\nElectron: ${process.versions.electron}\nNode.js: ${process.versions.node}\nChromium: ${process.versions.chrome}\n\nКлиент для Lampa.mx`,
+        detail: `Версия: ${app.getVersion()}\nElectron: ${process.versions.electron}\nNode.js: ${process.versions.node}\nChromium: ${process.versions.chrome}\n\nКлиент для Lampa.mx`,
         buttons: ['OK']
     });
 }
