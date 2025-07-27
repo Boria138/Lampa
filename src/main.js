@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, shell, dialog, ipcMain, session } = require('electron');
 const path = require('path');
 const Store = require('electron-store').default;
+const prompt = require('electron-prompt');
 const fs = require('fs').promises;
 const { existsSync } = require('fs');
 const { spawn } = require('child_process');
@@ -108,10 +109,65 @@ function createMenu() {
                 { label: 'Обновить', accelerator: 'CmdOrCtrl+R', click: () => mainWindow?.reload() },
                 { label: 'Перезагрузить без кэша', accelerator: 'CmdOrCtrl+Shift+R', click: () => mainWindow?.webContents.reloadIgnoringCache() },
                 { type: 'separator' },
-                { label: 'Настройки', accelerator: 'CmdOrCtrl+,', click: showSettingsDialog },
+                {
+                    label: 'Сменить URL',
+                    accelerator: 'CmdOrCtrl+,',
+                    click: async () => {
+                        const currentUrl = store.get('startUrl', APP_CONFIG.defaultUrl);
+                        try {
+                            const input = await prompt({
+                                title: 'Сменить URL',
+                                label: `Текущий URL: ${currentUrl}`,
+                                value: currentUrl, // Начальное значение в поле ввода
+                                inputAttrs: {
+                                    type: 'url',
+                                    placeholder: 'https://lampa.mx'
+                                },
+                                type: 'input',
+                                width: 400,
+                                height: 200
+                            }, mainWindow);
+
+                            if (input === null) {
+                                // Пользователь нажал "Отмена"
+                                return;
+                            }
+
+                            if (input) {
+                                try {
+                                    new URL(input); // Проверяем валидность URL
+                                    store.set('startUrl', input);
+                                    await dialog.showMessageBox(mainWindow, {
+                                        type: 'info',
+                                        title: 'Успех',
+                                        message: `URL изменен на: ${input}`,
+                                        buttons: ['OK']
+                                    });
+                                    mainWindow.loadURL(input);
+                                } catch (err) {
+                                    await dialog.showErrorBox('Ошибка', 'Неправильный URL! Введите корректный адрес.');
+                                }
+                            }
+                        } catch (err) {
+                            await dialog.showErrorBox('Ошибка', `Произошла ошибка: ${err.message}`);
+                        }
+                    }
+                },
                 { type: 'separator' },
                 { label: 'Сохранить профиль', click: exportProfile },
                 { label: 'Загрузить профиль', click: importProfile },
+                { type: 'separator' },
+                { label: 'Сбросить настройки', click: async () => {
+                    store.clear();
+                    await mainWindow.webContents.executeJavaScript('localStorage.clear();');
+                    await dialog.showMessageBox(mainWindow, {
+                        type: 'info',
+                        title: 'Сброс',
+                        message: 'Настройки и локальное хранилище сброшены',
+                        buttons: ['OK']
+                    });
+                    mainWindow.loadURL(APP_CONFIG.defaultUrl);
+                }},
                 { type: 'separator' },
                 { label: 'Выход', accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q', click: () => app.quit() }
             ]
@@ -156,7 +212,7 @@ function createMenu() {
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-// Сохраняем настройки в файл
+// Сохраняем настройки и сессию в файл
 async function exportProfile() {
     try {
         const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
@@ -167,7 +223,18 @@ async function exportProfile() {
 
         if (canceled || !filePath) return;
 
-        const profile = store.get();
+        // Получаем localStorage
+        const localStorageData = await mainWindow.webContents.executeJavaScript(`
+        Object.assign({}, localStorage)
+        `);
+
+        // Собираем данные профиля
+        const profile = {
+            settings: store.get(),
+            localStorage: localStorageData
+        };
+
+        // Сохраняем в файл
         await fs.writeFile(filePath, JSON.stringify(profile, null, 2));
         await dialog.showMessageBox(mainWindow, {
             type: 'info',
@@ -181,7 +248,7 @@ async function exportProfile() {
     }
 }
 
-// Загружаем настройки из файла
+// Загружаем настройки и сессию из файла
 async function importProfile() {
     try {
         const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
@@ -199,7 +266,21 @@ async function importProfile() {
             throw new Error('Неверный формат файла');
         }
 
-        store.set(profile);
+        // Восстанавливаем настройки
+        if (profile.settings) {
+            store.set(profile.settings);
+        }
+
+        // Восстанавливаем localStorage
+        if (profile.localStorage) {
+            await mainWindow.webContents.executeJavaScript(`
+            Object.entries(${JSON.stringify(profile.localStorage)}).forEach(([key, value]) => {
+                localStorage.setItem(key, value);
+            });
+            `);
+        }
+
+        // Загружаем URL и обновляем размеры окна
         const newUrl = store.get('startUrl', APP_CONFIG.defaultUrl);
         await mainWindow.loadURL(newUrl);
 
@@ -217,95 +298,6 @@ async function importProfile() {
         });
     } catch (err) {
         await dialog.showErrorBox('Ошибка', `Не удалось загрузить профиль: ${err.message}`);
-    }
-}
-
-// Окно настроек
-async function showSettingsDialog() {
-    const currentUrl = store.get('startUrl', APP_CONFIG.defaultUrl);
-    const result = await dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Настройки',
-        message: 'Настройки приложения',
-        detail: `Текущий URL: ${currentUrl}`,
-        buttons: ['Сменить URL', 'Сохранить профиль', 'Загрузить профиль', 'Сбросить', 'Отмена'],
-        defaultId: 4
-    });
-
-    if (result.response === 0) {
-        // Ввод нового URL
-        const { response, input } = await new Promise((resolve) => {
-            const inputDialog = new BrowserWindow({
-                parent: mainWindow,
-                modal: true,
-                width: 400,
-                height: 200,
-                webPreferences: {
-                    nodeIntegration: false,
-                    contextIsolation: true,
-                    preload: path.join(__dirname, 'preload.js')
-                }
-            });
-
-            inputDialog.loadURL(`data:text/html;charset=utf-8,
-                                <html>
-                                <body style="padding: 20px; font-family: Arial;">
-                                <h3>Новый URL</h3>
-                                <input type="text" id="urlInput" style="width: 100%; padding: 8px;" placeholder="https://lampa.mx">
-                                <div style="text-align: right; margin-top: 10px;">
-                                <button onclick="window.electronAPI.submitUrl(document.getElementById('urlInput').value)">OK</button>
-                                <button onclick="window.electronAPI.cancelUrl()" style="margin-left: 10px;">Отмена</button>
-                                </div>
-                                <script>
-                                const { ipcRenderer } = require('electron');
-                                window.electronAPI = {
-                                    submitUrl: (url) => ipcRenderer.send('submit-url', url),
-                                cancelUrl: () => ipcRenderer.send('cancel-url')
-                                };
-                                </script>
-                                </body>
-                                </html>
-                                `);
-
-            ipcMain.once('submit-url', (event, url) => {
-                inputDialog.close();
-                resolve({ response: 0, input: url });
-            });
-
-            ipcMain.once('cancel-url', () => {
-                inputDialog.close();
-                resolve({ response: 1 });
-            });
-        });
-
-        if (response === 0 && input) {
-            try {
-                new URL(input);
-                store.set('startUrl', input);
-                await dialog.showMessageBox(mainWindow, {
-                    type: 'info',
-                    title: 'Успех',
-                    message: `URL изменен на: ${input}`,
-                    buttons: ['OK']
-                });
-                mainWindow.loadURL(input);
-            } catch (err) {
-                await dialog.showErrorBox('Ошибка', 'Неправильный URL! Введите корректный адрес.');
-            }
-        }
-    } else if (result.response === 1) {
-        exportProfile();
-    } else if (result.response === 2) {
-        importProfile();
-    } else if (result.response === 3) {
-        store.clear();
-        await dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: 'Сброс',
-            message: 'Настройки сброшены',
-            buttons: ['OK']
-        });
-        mainWindow.loadURL(APP_CONFIG.defaultUrl);
     }
 }
 
