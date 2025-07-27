@@ -1,0 +1,44 @@
+{
+  "name": "lampa",
+  "author": {
+    "name": "Boris Yumankulov <boriabloger@protonmail.com>"
+  },
+  "version": "1.0.0",
+  "description": "A media streaming application for movies and TV shows",
+  "license": "MIT",
+  "homepage": "https://github.com/Boria138/Lampa",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build-linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "electron-store": "^10.1.0"
+  },
+  "devDependencies": {
+    "electron": "^37.2.4",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "dev.boria138.lampa",
+    "productName": "lampa",
+    "artifactName": "lampa.${ext}",
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png",
+      "category": "game"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Boria138",
+      "repo": "Lampa"
+    }
+  },
+  "files": [
+    "assets/**/*",
+    "src/**/*",
+    "node_modules/*",
+    "!dist/*"
+  ]
+}
