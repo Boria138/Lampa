@@ -5,18 +5,162 @@ const prompt = require('electron-prompt');
 const fs = require('fs').promises;
 const { existsSync } = require('fs');
 const { spawn } = require('child_process');
+const https = require('https');
 
 const store = new Store(); // Хранилище настроек
 
 let mainWindow; // Главное окно приложения
 
 const APP_CONFIG = {
-    defaultUrl: 'http://lampa.mx', // Начальный URL
+    defaultUrl: 'http://lampa.mx',
         minWidth: 1024,
         minHeight: 768,
         defaultWidth: 1366,
-            defaultHeight: 768
+            defaultHeight: 768,
+                githubRepo: 'Boria138/Lampa',
+                updateCheckInterval: 24 * 60 * 60 * 1000,
 };
+
+// Функция для HTTP запросов
+function httpsRequest(url, options = {}) {
+    return new Promise((resolve, reject) => {
+        const req = https.request(url, {
+            headers: {
+                'User-Agent': `Lampa-Linux-Client/${app.getVersion()}`,
+                                  ...options.headers
+            },
+            ...options
+        }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    try {
+                        resolve(JSON.parse(data));
+                    } catch (e) {
+                        resolve(data);
+                    }
+                } else {
+                    reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+                }
+            });
+        });
+
+        req.on('error', reject);
+        req.setTimeout(10000, () => {
+            req.destroy();
+            reject(new Error('Request timeout'));
+        });
+        req.end();
+    });
+}
+
+// Проверка обновлений
+async function checkForUpdates(showNoUpdatesDialog = false) {
+    try {
+        const currentVersion = app.getVersion();
+        console.log(`Проверка обновлений... Текущая версия: ${currentVersion}`);
+
+        // Получаем последний релиз из GitHub API
+        const apiUrl = `https://api.github.com/repos/${APP_CONFIG.githubRepo}/releases/latest`;
+        const release = await httpsRequest(apiUrl);
+
+        if (!release || !release.tag_name) {
+            throw new Error('Не удалось получить информацию о релизе');
+        }
+
+        const latestVersion = release.tag_name.replace(/^v/, ''); // Убираем префикс 'v'
+        console.log(`Последняя версия на GitHub: ${latestVersion}`);
+
+        // Сравниваем версии
+        if (compareVersions(currentVersion, latestVersion) < 0) {
+            console.log('Доступно обновление!');
+
+            // Показываем диалог об обновлении
+            const response = await dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                title: 'Доступно обновление',
+                message: `Доступна новая версия ${latestVersion}`,
+                detail: `Текущая версия: ${currentVersion}\nНовая версия: ${latestVersion}\n\n${release.body || 'Описание изменений отсутствует'}`,
+                buttons: ['Скачать', 'Позже', 'Больше не показывать'],
+                defaultId: 0,
+                    cancelId: 1
+            });
+
+            switch (response.response) {
+                case 0: // Скачать
+                    shell.openExternal(release.html_url);
+                    break;
+                case 2: // Больше не показывать
+                    store.set('skipUpdates', true);
+                    break;
+            }
+        } else {
+            console.log('Обновлений нет');
+            if (showNoUpdatesDialog) {
+                await dialog.showMessageBox(mainWindow, {
+                    type: 'info',
+                    title: 'Обновления',
+                    message: 'У вас установлена последняя версия',
+                    detail: `Текущая версия: ${currentVersion}`,
+                    buttons: ['OK']
+                });
+            }
+        }
+
+        // Сохраняем время последней проверки
+        store.set('lastUpdateCheck', Date.now());
+
+    } catch (error) {
+        console.error('Ошибка при проверке обновлений:', error);
+        if (showNoUpdatesDialog) {
+            await dialog.showErrorBox('Ошибка', `Не удалось проверить обновления: ${error.message}`);
+        }
+    }
+}
+
+// Сравнение версий (возвращает -1, 0, или 1)
+function compareVersions(version1, version2) {
+    const v1parts = version1.split('.').map(n => parseInt(n) || 0);
+    const v2parts = version2.split('.').map(n => parseInt(n) || 0);
+
+    const maxLength = Math.max(v1parts.length, v2parts.length);
+
+    for (let i = 0; i < maxLength; i++) {
+        const v1part = v1parts[i] || 0;
+        const v2part = v2parts[i] || 0;
+
+        if (v1part < v2part) return -1;
+        if (v1part > v2part) return 1;
+    }
+
+    return 0;
+}
+
+// Автоматическая проверка обновлений
+function scheduleUpdateCheck() {
+    const skipUpdates = store.get('skipUpdates', false);
+    if (skipUpdates) {
+        console.log('Автоматическая проверка обновлений отключена');
+        return;
+    }
+
+    const lastCheck = store.get('lastUpdateCheck', 0);
+    const timeSinceLastCheck = Date.now() - lastCheck;
+
+    if (timeSinceLastCheck >= APP_CONFIG.updateCheckInterval) {
+        // Проверяем сразу при запуске, если прошло достаточно времени
+        setTimeout(() => checkForUpdates(false), 3000); // Задержка 3 секунды после запуска
+    }
+
+    // Планируем следующую проверку
+    const timeUntilNextCheck = APP_CONFIG.updateCheckInterval - (timeSinceLastCheck % APP_CONFIG.updateCheckInterval);
+    setTimeout(() => {
+        checkForUpdates(false);
+        // Повторяем каждые 24 часа
+        setInterval(() => checkForUpdates(false), APP_CONFIG.updateCheckInterval);
+    }, timeUntilNextCheck);
+}
 
 // Создаем основное окно
 function createWindow() {
@@ -73,6 +217,12 @@ function createWindow() {
         if (process.platform === 'linux') {
             mainWindow.focus(); // Фокус на Linux
         }
+
+        // Обновляем состояние меню при запуске
+        updateMenuState();
+
+        // Запускаем планировщик проверки обновлений
+        scheduleUpdateCheck();
     });
 
     // Сохраняем размеры окна
@@ -97,6 +247,23 @@ function createWindow() {
     // Для разработчиков
     if (process.argv.includes('--dev')) {
         mainWindow.webContents.openDevTools();
+    }
+}
+
+// Обновляем состояние меню
+function updateMenuState() {
+    const menu = Menu.getApplicationMenu();
+    if (menu) {
+        const fileMenu = menu.items.find(item => item.label === 'Файл');
+        if (fileMenu) {
+            const updateSettingsMenu = fileMenu.submenu.items.find(item => item.label === 'Настройки обновлений');
+            if (updateSettingsMenu) {
+                const autoCheckMenuItem = updateSettingsMenu.submenu.items.find(item => item.label === 'Включить автопроверку');
+                if (autoCheckMenuItem) {
+                    autoCheckMenuItem.checked = !store.get('skipUpdates', false);
+                }
+            }
+        }
     }
 }
 
@@ -157,16 +324,51 @@ function createMenu() {
                 { label: 'Сохранить профиль', click: exportProfile },
                 { label: 'Загрузить профиль', click: importProfile },
                 { type: 'separator' },
+                {
+                    label: 'Проверить обновления',
+                    click: () => checkForUpdates(true)
+                },
+                {
+                    label: 'Настройки обновлений',
+                    submenu: [
+                        {
+                            label: 'Включить автопроверку',
+                            type: 'checkbox',
+                            checked: !store.get('skipUpdates', false),
+                            click: (menuItem) => {
+                                store.set('skipUpdates', !menuItem.checked);
+                                if (menuItem.checked) {
+                                    scheduleUpdateCheck();
+                                }
+                            }
+                        }
+                    ]
+                },
+                { type: 'separator' },
                 { label: 'Сбросить настройки', click: async () => {
-                    store.clear();
-                    await mainWindow.webContents.executeJavaScript('localStorage.clear();');
-                    await dialog.showMessageBox(mainWindow, {
-                        type: 'info',
-                        title: 'Сброс',
-                        message: 'Настройки и локальное хранилище сброшены',
-                        buttons: ['OK']
+                    const response = await dialog.showMessageBox(mainWindow, {
+                        type: 'warning',
+                        title: 'Подтверждение',
+                        message: 'Вы уверены, что хотите сбросить все настройки?',
+                        detail: 'Это действие нельзя отменить. Все настройки приложения и локальное хранилище будут очищены.',
+                        buttons: ['Да, сбросить', 'Отмена'],
+                        defaultId: 1,
+                            cancelId: 1
                     });
-                    mainWindow.loadURL(APP_CONFIG.defaultUrl);
+
+                    if (response.response === 0) {
+                        store.clear();
+                        await mainWindow.webContents.executeJavaScript('localStorage.clear();');
+                        // Обновляем меню после сброса настроек
+                        updateMenuState();
+                        await dialog.showMessageBox(mainWindow, {
+                            type: 'info',
+                            title: 'Сброс',
+                            message: 'Настройки и локальное хранилище сброшены',
+                            buttons: ['OK']
+                        });
+                        mainWindow.loadURL(APP_CONFIG.defaultUrl);
+                    }
                 }},
                 { type: 'separator' },
                 { label: 'Выход', accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q', click: () => app.quit() }
@@ -190,11 +392,11 @@ function createMenu() {
                 { label: 'Полный экран', accelerator: 'F11', click: () => mainWindow?.setFullScreen(!mainWindow.isFullScreen()) },
                 { label: 'Увеличить', accelerator: 'CmdOrCtrl+Plus', click: () => {
                     const zoom = mainWindow?.webContents.getZoomLevel();
-                    if (zoom) mainWindow.webContents.setZoomLevel(zoom + 0.5);
+                    if (zoom !== undefined) mainWindow.webContents.setZoomLevel(zoom + 0.5);
                 }},
                 { label: 'Уменьшить', accelerator: 'CmdOrCtrl+-', click: () => {
                     const zoom = mainWindow?.webContents.getZoomLevel();
-                    if (zoom) mainWindow.webContents.setZoomLevel(zoom - 0.5);
+                    if (zoom !== undefined) mainWindow.webContents.setZoomLevel(zoom - 0.5);
                 }},
                 { label: 'Сброс масштаба', accelerator: 'CmdOrCtrl+0', click: () => mainWindow?.webContents.setZoomLevel(0) },
                 { type: 'separator' },
@@ -204,6 +406,11 @@ function createMenu() {
         {
             label: 'Справка',
             submenu: [
+                {
+                    label: 'Открыть GitHub',
+                    click: () => shell.openExternal(`https://github.com/${APP_CONFIG.githubRepo}`)
+                },
+                { type: 'separator' },
                 { label: 'О программе', click: showAboutDialog }
             ]
         }
@@ -231,7 +438,9 @@ async function exportProfile() {
         // Собираем данные профиля
         const profile = {
             settings: store.get(),
-            localStorage: localStorageData
+            localStorage: localStorageData,
+            exportDate: new Date().toISOString(),
+            appVersion: app.getVersion()
         };
 
         // Сохраняем в файл
@@ -290,11 +499,15 @@ async function importProfile() {
         });
         mainWindow.setBounds(bounds);
 
+        // Обновляем состояние меню после импорта профиля
+        updateMenuState();
+
         await dialog.showMessageBox(mainWindow, {
             type: 'info',
             title: 'Готово',
             message: 'Профиль загружен!',
-            buttons: ['OK']
+            detail: profile.exportDate ? `Дата экспорта: ${new Date(profile.exportDate).toLocaleString()}` : '',
+                                    buttons: ['OK']
         });
     } catch (err) {
         await dialog.showErrorBox('Ошибка', `Не удалось загрузить профиль: ${err.message}`);
@@ -307,14 +520,16 @@ function showAboutDialog() {
         type: 'info',
         title: 'О программе',
         message: 'Lampa Linux Client',
-        detail: `Версия: ${app.getVersion()}\nElectron: ${process.versions.electron}\nNode.js: ${process.versions.node}\nChromium: ${process.versions.chrome}\n\nКлиент для Lampa.mx`,
-        buttons: ['OK']
+        detail: `Версия: ${app.getVersion()}\nElectron: ${process.versions.electron}\nNode.js: ${process.versions.node}\nChromium: ${process.versions.chrome}\n\nКлиент для Lampa.mx\nGitHub: ${APP_CONFIG.githubRepo}`,
+                          buttons: ['OK'],
+                          defaultId: 0
     });
 }
 
 // IPC обработчики
 ipcMain.handle('get-app-version', () => app.getVersion());
 ipcMain.handle('get-platform', () => process.platform);
+ipcMain.handle('check-for-updates', () => checkForUpdates(true));
 
 ipcMain.on('fs-readFile', (event, filePath, options) => {
     fs.readFile(filePath, options)
