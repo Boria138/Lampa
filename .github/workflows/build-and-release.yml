@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Для полной истории репозитория
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -25,15 +27,45 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install AppImage dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2
+
       - name: Build AppImage
         run: |
           npm run build-linux
           chmod +x dist/lampa.AppImage
 
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          if [[ "${{ github.ref }}" =~ ^refs/tags/v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+          else
+            echo "Invalid tag format: ${{ github.ref }}"
+            exit 1
+          fi
+
+      - name: Extract changelog for version
+        id: changelog
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          awk "/^## \\[$VERSION\\]/ {flag=1; next} /^## \\[/ {flag=0} flag" CHANGELOG.md > changelog.txt
+          if [ ! -s changelog.txt ]; then
+            echo "No changelog entries found for version $VERSION"
+            echo "body=No changelog entries found for version $VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "body<<EOF" >> $GITHUB_OUTPUT
+            cat changelog.txt >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         if: github.ref_type == 'tag'
         with:
+          body: ${{ steps.changelog.outputs.body }}
           files: |
             dist/lampa.AppImage
         env:
