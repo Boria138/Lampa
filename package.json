@@ -18,8 +18,8 @@
     "electron-store": "^10.1.0"
   },
   "devDependencies": {
-    "electron": "^37.2.4",
-    "electron-builder": "^26.0.12"
+    "electron": "37.2.4",
+    "electron-builder": "26.0.12"
   },
   "build": {
     "appId": "dev.boria138.lampa",
