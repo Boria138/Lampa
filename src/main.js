@@ -21,6 +21,29 @@ const APP_CONFIG = {
                 updateCheckInterval: 24 * 60 * 60 * 1000,
 };
 
+// Функция инициализации стандартного localStorage для Lampa
+async function initializeLampaStorage() {
+    try {
+        await mainWindow.webContents.executeJavaScript(`
+        // Инициализируем стандартные настройки Lampa, если они не установлены
+        if (!localStorage.getItem("keyboard_type")) {
+            localStorage.setItem("keyboard_type", "integrate");
+        }
+        if (!localStorage.getItem("device_name")) {
+            localStorage.setItem("device_name", "Lampa Linux");
+        }
+
+        console.log("Lampa localStorage initialized:");
+        console.log("keyboard_type:", localStorage.getItem("keyboard_type"));
+        console.log("device_name:", localStorage.getItem("device_name"));
+        `);
+
+        console.log('Стандартные настройки Lampa инициализированы');
+    } catch (error) {
+        console.error('Ошибка при инициализации localStorage:', error);
+    }
+}
+
 // Функция для HTTP запросов
 function httpsRequest(url, options = {}) {
     return new Promise((resolve, reject) => {
@@ -225,6 +248,14 @@ function createWindow() {
         scheduleUpdateCheck();
     });
 
+    // Инициализируем localStorage после полной загрузки страницы
+    mainWindow.webContents.once('dom-ready', () => {
+        // Добавляем небольшую задержку, чтобы убедиться, что страница полностью загружена
+        setTimeout(() => {
+            initializeLampaStorage();
+        }, 1000);
+    });
+
     // Сохраняем размеры окна
     mainWindow.on('resize', () => {
         store.set('windowBounds', mainWindow.getBounds());
@@ -359,6 +390,10 @@ function createMenu() {
                     if (response.response === 0) {
                         store.clear();
                         await mainWindow.webContents.executeJavaScript('localStorage.clear();');
+                        // Переинициализируем стандартные настройки Lampa после сброса
+                        setTimeout(() => {
+                            initializeLampaStorage();
+                        }, 500);
                         // Обновляем меню после сброса настроек
                         updateMenuState();
                         await dialog.showMessageBox(mainWindow, {
@@ -488,6 +523,9 @@ async function importProfile() {
             });
             `);
         }
+
+        // Убеждаемся, что стандартные настройки Lampa установлены
+        await initializeLampaStorage();
 
         // Загружаем URL и обновляем размеры окна
         const newUrl = store.get('startUrl', APP_CONFIG.defaultUrl);
