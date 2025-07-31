@@ -248,11 +248,22 @@ function createWindow() {
         scheduleUpdateCheck();
     });
 
-    // Инициализируем localStorage после полной загрузки страницы
+    // Инициализируем localStorage и скрываем кнопку микрофона после полной загрузки страницы
     mainWindow.webContents.once('dom-ready', () => {
         // Добавляем небольшую задержку, чтобы убедиться, что страница полностью загружена
         setTimeout(() => {
             initializeLampaStorage();
+                        // Вставляем CSS для скрытия кнопки микрофона
+                        mainWindow.webContents.insertCSS(`
+                        .simple-keyboard-mic {
+                                display: none !important;
+                            }
+                            .simple-keyboard--with-mic {
+                                    padding-right: 0 !important; /* Убираем отступ, если он был добавлен для микрофона */
+                                }
+                                `).catch(err => {
+                                        console.error('Ошибка при вставке CSS:', err);
+                                    });
         }, 1000);
     });
 
