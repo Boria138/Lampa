@@ -1,7 +1,6 @@
 const { app, BrowserWindow, Menu, shell, dialog, ipcMain, session } = require('electron');
 const path = require('path');
 const Store = require('electron-store').default;
-const prompt = require('electron-prompt');
 const fs = require('fs').promises;
 const { existsSync } = require('fs');
 const { spawn } = require('child_process');
@@ -253,17 +252,17 @@ function createWindow() {
         // Добавляем небольшую задержку, чтобы убедиться, что страница полностью загружена
         setTimeout(() => {
             initializeLampaStorage();
-                        // Вставляем CSS для скрытия кнопки микрофона
-                        mainWindow.webContents.insertCSS(`
-                        .simple-keyboard-mic {
-                                display: none !important;
-                            }
-                            .simple-keyboard--with-mic {
-                                    padding-right: 0 !important; /* Убираем отступ, если он был добавлен для микрофона */
-                                }
-                                `).catch(err => {
-                                        console.error('Ошибка при вставке CSS:', err);
-                                    });
+            // Вставляем CSS для скрытия кнопки микрофона
+            mainWindow.webContents.insertCSS(`
+            .simple-keyboard-mic {
+                display: none !important;
+            }
+            .simple-keyboard--with-mic {
+                padding-right: 0 !important; /* Убираем отступ, если он был добавлен для микрофона */
+            }
+            `).catch(err => {
+                console.error('Ошибка при вставке CSS:', err);
+            });
         }, 1000);
     });
 
@@ -323,42 +322,57 @@ function createMenu() {
                     accelerator: 'CmdOrCtrl+,',
                     click: async () => {
                         const currentUrl = store.get('startUrl', APP_CONFIG.defaultUrl);
-                        try {
-                            const input = await prompt({
-                                title: 'Сменить URL',
-                                label: `Текущий URL: ${currentUrl}`,
-                                value: currentUrl, // Начальное значение в поле ввода
-                                inputAttrs: {
-                                    type: 'url',
-                                    placeholder: 'https://lampa.mx'
-                                },
-                                type: 'input',
+                        const { response, input } = await new Promise((resolve) => {
+                            const inputDialog = new BrowserWindow({
+                                parent: mainWindow,
+                                modal: true,
                                 width: 400,
-                                height: 200
-                            }, mainWindow);
-
-                            if (input === null) {
-                                // Пользователь нажал "Отмена"
-                                return;
-                            }
-
-                            if (input) {
-                                try {
-                                    new URL(input); // Проверяем валидность URL
-                                    store.set('startUrl', input);
-                                    await dialog.showMessageBox(mainWindow, {
-                                        type: 'info',
-                                        title: 'Успех',
-                                        message: `URL изменен на: ${input}`,
-                                        buttons: ['OK']
-                                    });
-                                    mainWindow.loadURL(input);
-                                } catch (err) {
-                                    await dialog.showErrorBox('Ошибка', 'Неправильный URL! Введите корректный адрес.');
+                                height: 200,
+                                webPreferences: {
+                                    nodeIntegration: false,
+                                    contextIsolation: true,
+                                    preload: path.join(__dirname, 'preload.js')
                                 }
+                            });
+
+                            inputDialog.loadURL(`data:text/html;charset=utf-8,
+                                                <html>
+                                                <body style="padding: 20px; font-family: Arial;">
+                                                <h3>Новый URL</h3>
+                                                <input type="text" id="urlInput" style="width: 100%; padding: 8px;" placeholder="https://lampa.mx" value="${currentUrl}">
+                                                <div style="text-align: right; margin-top: 10px;">
+                                                <button onclick="window.electronAPI.submitUrl(document.getElementById('urlInput').value)">OK</button>
+                                                <button onclick="window.electronAPI.cancelUrl()" style="margin-left: 10px;">Отмена</button>
+                                                </div>
+                                                </body>
+                                                </html>
+                                                `);
+
+                            ipcMain.once('submit-url', (event, url) => {
+                                inputDialog.close();
+                                resolve({ response: 0, input: url });
+                            });
+
+                            ipcMain.once('cancel-url', () => {
+                                inputDialog.close();
+                                resolve({ response: 1 });
+                            });
+                        });
+
+                        if (response === 0 && input) {
+                            try {
+                                new URL(input);
+                                store.set('startUrl', input);
+                                await dialog.showMessageBox(mainWindow, {
+                                    type: 'info',
+                                    title: 'Успех',
+                                    message: `URL изменен на: ${input}`,
+                                    buttons: ['OK']
+                                });
+                                mainWindow.loadURL(input);
+                            } catch (err) {
+                                await dialog.showErrorBox('Ошибка', 'Неправильный URL! Введите корректный адрес.');
                             }
-                        } catch (err) {
-                            await dialog.showErrorBox('Ошибка', `Произошла ошибка: ${err.message}`);
                         }
                     }
                 },
