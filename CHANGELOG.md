@@ -3,9 +3,10 @@
 Все заметные изменения в этом проекте фиксируются в этом файле.
 Формат основан на [Keep a Changelog](https://keepachangelog.com/) и придерживается принципов [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.2.0] - 2025-08-02
 
 ### Added
+- Сборки под MacOS
 
 ### Changed
 - Обновлена версия Electon
