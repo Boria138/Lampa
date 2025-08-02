@@ -11,7 +11,8 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "build-linux": "electron-builder --linux --publish=never"
+    "build-linux": "electron-builder --linux --publish=never",
+    "build-mac": "electron-builder --mac --publish=never"
   },
   "dependencies": {
     "electron-store": "^10.1.0",
@@ -24,11 +25,16 @@
   "build": {
     "appId": "dev.boria138.lampa",
     "productName": "lampa",
-    "artifactName": "lampa.${ext}",
+    "artifactName": "lampa-${arch}.${ext}",
     "linux": {
       "target": "AppImage",
-      "icon": "assets/icon.png",
-      "category": "game"
+      "icon": "assets/icon_linux.png",
+      "category": "Multimedia"
+    },
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "assets/icon_mac.png",
+      "target": ["dmg"]
     },
     "publish": {
       "provider": "github",
