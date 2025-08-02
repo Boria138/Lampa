@@ -3,26 +3,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('require', (module) => {
     if (module === 'fs') {
         return {
-            readFile: (path, options, callback) => {
-                if (typeof options === 'function') {
-                    callback = options;
-                    options = {};
-                }
-                ipcRenderer.send('fs-readFile', path, options);
-                ipcRenderer.once(`fs-readFile-response-${path}`, (event, error, data) => {
-                    callback(error, data);
-                });
-            },
-            writeFile: (path, data, options, callback) => {
-                if (typeof options === 'function') {
-                    callback = options;
-                    options = {};
-                }
-                ipcRenderer.send('fs-writeFile', path, data, options);
-                ipcRenderer.once(`fs-writeFile-response-${path}`, (event, error) => {
-                    callback(error);
-                });
-            },
             existsSync: (path) => {
                 return ipcRenderer.sendSync('fs-existsSync', path);
             }

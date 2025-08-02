@@ -5,6 +5,7 @@ const fs = require('fs').promises;
 const { existsSync } = require('fs');
 const { spawn } = require('child_process');
 const https = require('https');
+const which = require('which');
 
 const store = new Store(); // Хранилище настроек
 
@@ -224,7 +225,10 @@ function createWindow() {
         callback({
             responseHeaders: {
                 ...details.responseHeaders,
-                'Content-Security-Policy': ['default-src \'self\' \'unsafe-inline\' \'unsafe-eval\' data: https: http: wss: ws:']
+                'Content-Security-Policy': [
+                    "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: https: http: wss: ws:",
+                    "worker-src 'self' blob:"
+                ]
             }
         });
     });
@@ -594,28 +598,39 @@ ipcMain.handle('get-app-version', () => app.getVersion());
 ipcMain.handle('get-platform', () => process.platform);
 ipcMain.handle('check-for-updates', () => checkForUpdates(true));
 
-ipcMain.on('fs-readFile', (event, filePath, options) => {
-    fs.readFile(filePath, options)
-    .then(data => event.sender.send(`fs-readFile-response-${filePath}`, null, data))
-    .catch(err => event.sender.send(`fs-readFile-response-${filePath}`, err));
+// IPC обработчик для fs-existsSync
+ipcMain.on('fs-existsSync', async (event, filePath) => {
+    try {
+        const resolvedPath = await which(filePath, { path: process.env.PATH });
+        const exists = existsSync(resolvedPath);
+        event.returnValue = exists;
+    } catch (err) {
+        event.returnValue = false;
+    }
 });
 
-ipcMain.on('fs-writeFile', (event, filePath, data, options) => {
-    fs.writeFile(filePath, data, options)
-    .then(() => event.sender.send(`fs-writeFile-response-${filePath}`, null))
-    .catch(err => event.sender.send(`fs-writeFile-response-${filePath}`, err));
-});
-
-ipcMain.on('fs-existsSync', (event, filePath) => {
-    event.returnValue = existsSync(filePath);
-});
-
-ipcMain.on('child-process-spawn', (event, id, cmd, args, opts) => {
-    const child = spawn(cmd, args, opts);
-    child.on('error', (err) => event.sender.send(`child-process-spawn-error-${id}`, err));
-    child.on('exit', (code) => event.sender.send(`child-process-spawn-exit-${id}`, code));
-    child.stdout.on('data', (data) => event.sender.send(`child-process-spawn-stdout-${id}`, data));
-    child.stderr.on('data', (data) => event.sender.send(`child-process-spawn-stderr-${id}`, data));
+// IPC обработчик для child-process-spawn
+ipcMain.on('child-process-spawn', async (event, id, cmd, args, opts) => {
+    try {
+        const resolvedCmd = await which(cmd, { path: opts?.env?.PATH || process.env.PATH });
+        const spawnOptions = opts || {};
+        spawnOptions.env = { ...process.env, ...(opts?.env || {}) };
+        const child = spawn(resolvedCmd, args, spawnOptions);
+        child.on('error', (err) => {
+            event.sender.send(`child-process-spawn-error-${id}`, err);
+        });
+        child.on('exit', (code) => {
+            event.sender.send(`child-process-spawn-exit-${id}`, code);
+        });
+        child.stdout.on('data', (data) => {
+            event.sender.send(`child-process-spawn-stdout-${id}`, data);
+        });
+        child.stderr.on('data', (data) => {
+            event.sender.send(`child-process-spawn-stderr-${id}`, data);
+        });
+    } catch (err) {
+        event.sender.send(`child-process-spawn-error-${id}`, new Error(`Command ${cmd} not found: ${err.message}`));
+    }
 });
 
 // Запуск приложения
