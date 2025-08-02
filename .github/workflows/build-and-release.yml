@@ -34,7 +34,7 @@ jobs:
       - name: Build AppImage
         run: |
           npm run build-linux
-          chmod +x dist/lampa.AppImage
+          chmod +x dist/lampa-x86_64.AppImage
 
       - name: Extract version from tag
         id: get_version
