@@ -106,6 +106,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           # body: ${{ needs.build-linux.outputs.changelog }}
+          tag_name: "v1.2.0"
           files: |
             lampa-linux/lampa.AppImage
             lampa-macos-x64/*.dmg
