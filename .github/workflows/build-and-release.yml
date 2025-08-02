@@ -108,7 +108,7 @@ jobs:
           # body: ${{ needs.build-linux.outputs.changelog }}
           tag_name: "v1.2.0"
           files: |
-            lampa-linux/lampa.AppImage
+            lampa-linux/lampa-x86_64.AppImage
             lampa-macos-x64/*.dmg
             lampa-macos-arm64/*.dmg
         env:
