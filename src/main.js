@@ -6,6 +6,7 @@ const { existsSync } = require('fs');
 const { spawn } = require('child_process');
 const https = require('https');
 const which = require('which');
+const os = require('os');
 
 const store = new Store(); // Хранилище настроек
 
@@ -24,13 +25,14 @@ const APP_CONFIG = {
 // Функция инициализации стандартного localStorage для Lampa
 async function initializeLampaStorage() {
     try {
+        const deviceName = `Lampa ${os.hostname()}`;
         await mainWindow.webContents.executeJavaScript(`
         // Инициализируем стандартные настройки Lampa, если они не установлены
         if (!localStorage.getItem("keyboard_type")) {
             localStorage.setItem("keyboard_type", "integrate");
         }
         if (!localStorage.getItem("device_name")) {
-            localStorage.setItem("device_name", "Lampa Linux");
+            localStorage.setItem("device_name", "${deviceName}");
         }
 
         console.log("Lampa localStorage initialized:");
