@@ -165,7 +165,8 @@ function compareVersions(version1, version2) {
 // Автоматическая проверка обновлений
 function scheduleUpdateCheck() {
     const skipUpdates = store.get('skipUpdates', false);
-    if (skipUpdates) {
+    const isInOpt = app.getAppPath().startsWith('/opt');
+    if (skipUpdates || isInOpt) {
         console.log('Автоматическая проверка обновлений отключена');
         return;
     }
