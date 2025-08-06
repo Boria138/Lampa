@@ -19,7 +19,7 @@
     "which": "^5.0.0"
   },
   "devDependencies": {
-    "electron": "37.2.5",
+    "electron": "37.2.6",
     "electron-builder": "26.0.12"
   },
   "build": {
