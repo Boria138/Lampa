@@ -89,7 +89,7 @@ jobs:
       - name: Upload macOS Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lampa-macos-${{ matrix.arch }}
+          name: lampa-macos
           path: dist/*.dmg
 
   release:
@@ -106,7 +106,6 @@ jobs:
           body: ${{ needs.build-linux.outputs.changelog }}
           files: |
             lampa-linux/lampa-x86_64.AppImage
-            lampa-macos-x64/*.dmg
-            lampa-macos-arm64/*.dmg
+            lampa-macos/*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
