@@ -15,7 +15,7 @@
     "build-mac": "electron-builder --mac --x64 --arm64 --publish=never"
   },
   "dependencies": {
-    "electron-store": "^10.1.0",
+    "electron-store": "^11.0.0",
     "which": "^5.0.0"
   },
   "devDependencies": {
