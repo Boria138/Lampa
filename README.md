@@ -41,7 +41,7 @@ sudo dnf install @multimedia
 
 Если у вас возникли вопросы или проблемы:
 
-1. Проверьте [раздел Issues](https://github.com/your-username/lampa-linux-client/issues)
+1. Проверьте [раздел Issues](https://github.com/Boria138/Lampa/issues)
 2. Создайте новый Issue с подробным описанием проблемы
 3. Приложите логи из консоли разработчика (F12)
 
