@@ -22,9 +22,6 @@
     "electron": "40.0.0",
     "electron-builder": "26.5.0"
   },
-  "overrides": {
-    "tar": "^7.5.6"
-  },
   "build": {
     "appId": "dev.boria138.lampa",
     "productName": "lampa",

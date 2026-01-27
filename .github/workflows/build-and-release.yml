@@ -36,14 +36,13 @@ jobs:
           npm run build-linux
           chmod +x dist/lampa-x86_64.AppImage
 
-      - name: Extract version from tag
+      - name: Extract version
         id: get_version
         run: |
           if [[ "${{ github.ref }}" =~ ^refs/tags/v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
             echo "version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
           else
-            echo "Invalid tag format: ${{ github.ref }}"
-            exit 1
+            echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
           fi
 
       - name: Extract changelog for version
