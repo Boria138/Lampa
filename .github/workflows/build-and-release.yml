@@ -100,9 +100,9 @@ jobs:
 
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
-        if: github.ref_type == 'tag'
         with:
-          body: ${{ needs.build-linux.outputs.changelog }}
+          tag_name: v${{ steps.get_version.outputs.version }}
+          body: ${{ steps.changelog.outputs.body }}
           files: |
             lampa-linux/lampa-x86_64.AppImage
             lampa-macos/*.dmg
