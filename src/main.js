@@ -2,7 +2,7 @@ const { app, BrowserWindow, Menu, shell, dialog, ipcMain, session } = require('e
 const path = require('path');
 const Store = require('electron-store').default;
 const fs = require('fs').promises;
-const { existsSync } = require('fs');
+const { existsSync, accessSync, constants: fsConstants } = require('fs');
 const { spawn } = require('child_process');
 const https = require('https');
 const which = require('which');
@@ -162,11 +162,22 @@ function compareVersions(version1, version2) {
     return 0;
 }
 
+// Проверка прав на запись в директорию приложения
+function isAppDirectoryWritable() {
+    try {
+        const appDir = path.dirname(app.getAppPath());
+        accessSync(appDir, fsConstants.W_OK);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 // Автоматическая проверка обновлений
 function scheduleUpdateCheck() {
     const skipUpdates = store.get('skipUpdates', false);
-    const isInOpt = app.getAppPath().startsWith('/opt');
-    if (skipUpdates || isInOpt) {
+    const canWrite = isAppDirectoryWritable();
+    if (skipUpdates || !canWrite) {
         console.log('Автоматическая проверка обновлений отключена');
         return;
     }
