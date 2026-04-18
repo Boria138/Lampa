@@ -59,7 +59,7 @@ jobs:
           fi
 
       - name: Upload Linux Artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: lampa-linux
           path: |
@@ -87,7 +87,7 @@ jobs:
           npm run build-mac
 
       - name: Upload macOS Artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: lampa-macos
           path: dist/*.dmg
@@ -112,7 +112,7 @@ jobs:
         run: npm run build-win
 
       - name: Upload Windows Artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: lampa-windows
           path: dist/*.exe
@@ -122,7 +122,7 @@ jobs:
     needs: [build-linux, build-macos, build-windows]
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
 
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
