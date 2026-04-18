@@ -22,6 +22,72 @@ const APP_CONFIG = {
                 updateCheckInterval: 24 * 60 * 60 * 1000,
 };
 
+const SAFE_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:']);
+
+function parseUrl(value) {
+    try {
+        return new URL(value);
+    } catch {
+        return null;
+    }
+}
+
+function isSafeExternalUrl(value) {
+    const parsed = parseUrl(value);
+    return !!(parsed && SAFE_EXTERNAL_PROTOCOLS.has(parsed.protocol));
+}
+
+function isTrustedIpcSender(event) {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return false;
+
+    const senderUrl = parseUrl(event.senderFrame?.url || '');
+    const configuredUrl = parseUrl(store.get('startUrl', APP_CONFIG.defaultUrl));
+
+    if (!senderUrl) return false;
+    if (!configuredUrl) return false;
+
+    return senderUrl.origin === configuredUrl.origin;
+}
+
+function isValidCommandName(value) {
+    return typeof value === 'string'
+        && value.length > 0
+        && value.length <= 128
+        && !value.includes('/')
+        && !value.includes('\\')
+        && !/\s/.test(value)
+        && !/[\0\r\n]/.test(value);
+}
+
+function sanitizeSpawnArgs(args) {
+    if (!Array.isArray(args)) return [];
+    if (args.length > 64) throw new Error('Too many arguments');
+
+    return args.map((arg) => {
+        if (typeof arg !== 'string') throw new Error('Invalid argument type');
+        if (arg.length > 4096) throw new Error('Argument is too long');
+        if (/[\0\r\n]/.test(arg)) throw new Error('Invalid control characters in argument');
+        return arg;
+    });
+}
+
+function buildSpawnOptions(opts) {
+    const sourceOptions = (opts && typeof opts === 'object') ? opts : {};
+    const env = { ...process.env };
+
+    if (sourceOptions.env && typeof sourceOptions.env.PATH === 'string' && sourceOptions.env.PATH.length <= 8192) {
+        env.PATH = sourceOptions.env.PATH;
+    }
+
+    return {
+        shell: false,
+        detached: false,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env
+    };
+}
+
 // Функция инициализации стандартного localStorage для Lampa
 async function initializeLampaStorage() {
     try {
@@ -299,6 +365,10 @@ function createWindow() {
 
     // Открываем внешние ссылки в браузере
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        if (!isSafeExternalUrl(url)) {
+            return { action: 'deny' };
+        }
+
         shell.openExternal(url);
         return { action: 'deny' };
     });
@@ -379,7 +449,9 @@ function createMenu() {
 
                         if (response === 0 && input) {
                             try {
-                                new URL(input);
+                                if (!isSafeExternalUrl(input)) {
+                                    throw new Error('Unsafe URL protocol');
+                                }
                                 store.set('startUrl', input);
                                 await dialog.showMessageBox(mainWindow, {
                                     type: 'info',
@@ -615,6 +687,11 @@ ipcMain.handle('check-for-updates', () => checkForUpdates(true));
 // IPC обработчик для fs-existsSync
 ipcMain.on('fs-existsSync', async (event, filePath) => {
     try {
+        if (!isTrustedIpcSender(event) || !isValidCommandName(filePath)) {
+            event.returnValue = false;
+            return;
+        }
+
         const resolvedPath = await which(filePath, { path: process.env.PATH });
         const exists = existsSync(resolvedPath);
         event.returnValue = exists;
@@ -626,10 +703,21 @@ ipcMain.on('fs-existsSync', async (event, filePath) => {
 // IPC обработчик для child-process-spawn
 ipcMain.on('child-process-spawn', async (event, id, cmd, args, opts) => {
     try {
-        const resolvedCmd = await which(cmd, { path: opts?.env?.PATH || process.env.PATH });
-        const spawnOptions = opts || {};
-        spawnOptions.env = { ...process.env, ...(opts?.env || {}) };
-        const child = spawn(resolvedCmd, args, spawnOptions);
+        if (!isTrustedIpcSender(event)) {
+            event.sender.send(`child-process-spawn-error-${id}`, new Error('Forbidden IPC sender'));
+            return;
+        }
+
+        if (!isValidCommandName(cmd)) {
+            event.sender.send(`child-process-spawn-error-${id}`, new Error('Invalid command'));
+            return;
+        }
+
+        const safeArgs = sanitizeSpawnArgs(args);
+        const spawnOptions = buildSpawnOptions(opts);
+        const resolvedCmd = await which(cmd, { path: spawnOptions.env.PATH || process.env.PATH });
+        const child = spawn(resolvedCmd, safeArgs, spawnOptions);
+
         child.on('error', (err) => {
             event.sender.send(`child-process-spawn-error-${id}`, err);
         });

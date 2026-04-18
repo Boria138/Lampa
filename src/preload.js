@@ -12,26 +12,60 @@ contextBridge.exposeInMainWorld('require', (module) => {
         return {
             spawn: (command, args, options) => {
                 const id = Math.random().toString(36).substr(2, 9);
+                const stdoutChannel = `child-process-spawn-stdout-${id}`;
+                const stderrChannel = `child-process-spawn-stderr-${id}`;
+                const errorChannel = `child-process-spawn-error-${id}`;
+                const exitChannel = `child-process-spawn-exit-${id}`;
+                const errorListeners = [];
+                const exitListeners = [];
+                const stdoutListeners = [];
+                const stderrListeners = [];
+                let isCleaned = false;
+
+                const handleStdout = (_event, data) => {
+                    stdoutListeners.forEach((listener) => listener(data));
+                };
+                const handleStderr = (_event, data) => {
+                    stderrListeners.forEach((listener) => listener(data));
+                };
+                const cleanup = () => {
+                    if (isCleaned) return;
+                    isCleaned = true;
+                    ipcRenderer.removeListener(stdoutChannel, handleStdout);
+                    ipcRenderer.removeListener(stderrChannel, handleStderr);
+                };
+
+                ipcRenderer.on(stdoutChannel, handleStdout);
+                ipcRenderer.on(stderrChannel, handleStderr);
+                ipcRenderer.once(errorChannel, (_event, error) => {
+                    cleanup();
+                    errorListeners.forEach((listener) => listener(error));
+                });
+                ipcRenderer.once(exitChannel, (_event, code) => {
+                    cleanup();
+                    exitListeners.forEach((listener) => listener(code));
+                });
+
                 ipcRenderer.send('child-process-spawn', id, command, args, options);
                 return {
                     on: (event, callback) => {
                         if (event === 'error') {
-                            ipcRenderer.once(`child-process-spawn-error-${id}`, (event, error) => callback(error));
+                            errorListeners.push(callback);
                         } else if (event === 'exit') {
-                            ipcRenderer.once(`child-process-spawn-exit-${id}`, (event, code) => callback(code));
+                            exitListeners.push(callback);
                         }
                     },
                     stdout: {
                         on: (event, callback) => {
                             if (event === 'data') {
-                                ipcRenderer.on(`child-process-spawn-stdout-${id}`, (event, data) => callback(data));
+                                stdoutListeners.push(callback);
                             }
                         }
                     },
                     stderr: {
                         on: (event, callback) => {
                             if (event === 'data') {
-                                ipcRenderer.on(`child-process-spawn-stderr-${id}`, (event, data) => callback(data));
+                                stderrListeners.push(callback);
                             }
                         }
                     }
