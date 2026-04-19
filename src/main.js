@@ -336,17 +336,6 @@ function createWindow() {
         // Добавляем небольшую задержку, чтобы убедиться, что страница полностью загружена
         setTimeout(() => {
             initializeLampaStorage();
-            // Вставляем CSS для скрытия кнопки микрофона
-            mainWindow.webContents.insertCSS(`
-            .simple-keyboard-mic {
-                display: none !important;
-            }
-            .simple-keyboard--with-mic {
-                padding-right: 0 !important; /* Убираем отступ, если он был добавлен для микрофона */
-            }
-            `).catch(err => {
-                console.error('Ошибка при вставке CSS:', err);
-            });
         }, 1000);
     });
 
