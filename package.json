@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "electron": "41.2.0",
-    "electron-builder": "26.5.0"
+    "electron-builder": "26.14.0"
   },
   "build": {
     "appId": "dev.boria138.lampa",
