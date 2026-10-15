@@ -16,7 +16,7 @@
     "build-win": "electron-builder --win --x64 --publish=never"
   },
   "dependencies": {
-    "electron-store": "^11.0.0",
+    "electron-store": "^12.0.0",
     "which": "^6.0.0"
   },
   "devDependencies": {
